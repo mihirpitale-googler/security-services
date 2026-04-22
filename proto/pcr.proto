@@ -25,42 +25,79 @@ option go_package = "github.com/openconfig/pcrservice";
 
 // Enumerations
 enum HashAlgo {
+  // Default value. Indicates that no hash algorithm was specified or it is unknown.
   HASH_ALGO_UNSPECIFIED = 0;
+  // SHA-1 algorithm (160-bit).
   HASH_ALGO_SHA1 = 1;
+  // SHA-256 algorithm (256-bit). 
   HASH_ALGO_SHA256 = 2;
+  // SHA-384 algorithm (384-bit).
   HASH_ALGO_SHA384 = 3;
+  // SHA-512 algorithm (512-bit).
   HASH_ALGO_SHA512 = 4;
 }
 
 enum RootOfTrustVersion {
+   // Indicates the TPM version is unknown or not provided.
    ROOT_OF_TRUST_VERSION_UNSPECIFIED = 0;
+   // Represents TPM 1.2 specifications. supports fixed pcr banks.
    TPM_1_2_PCR = 1;
+   // Represents TPM 2.0 specifications. Supports multiple PCR banks.
    TPM_2_0_PCR = 2;
 }
 
 enum BootStage {
-SRTM = 0;
-BIOS = 1;
-BIOS_CONFIGURATION = 2;
-EMBEDDED_OPTION_ROMS = 3;
-PLATFORM_EXTENSIONS = 4;
-PLATFORM_INITIALIZATION_DRIVERS = 5;
-PLATFORM_CONFIGURATIONS = 6;
-UEFI_APPLICATIONS = 7;
-UEFI_APPLICATION_CONFIGURATION = 8;
-PARTITION_TABLE = 9;
-BOOT_MANAGER = 10;
-BOOT_CONFIGURATION = 11; // Includes critical boot security configuration such as secure boot.
-BOOT_LOADER = 12;
-KERNEL_CONFIGURATION = 13;
-KERNEL_COMMAND_LINE = 14;
-KERNEL = 15;
-OS_CONFIGURATION = 16;
-ROOT_FILESYSTEM = 17;
-OS_EXTENSION = 18;
-CONTAINER_IMAGES = 19;
-OTHER = 20;
+  // PCR 0: SRTM, BIOS, and Host Platform Extensions.
+  // Reference: TCG PC Client Spec - Section 2.3.1
+  SRTM = 0;
+  BIOS = 1;
+  PLATFORM_EXTENSIONS = 4;
+
+  // PCR 1: Host Platform Configuration.
+  // Reference: TCG PC Client Spec - Section 2.3.2
+  BIOS_CONFIGURATION = 2;
+
+  // PCR 2: UEFI Option ROM Code.
+  // Reference: TCG PC Client Spec - Section 2.3.3
+  EMBEDDED_OPTION_ROMS = 3;
+
+  // PCR 3: UEFI Option ROM Configuration and Data.
+  // Reference: TCG PC Client Spec - Section 2.3.4
+  PLATFORM_INITIALIZATION_DRIVERS = 5;
+
+  // PCR 4: UEFI Boot Manager Code and Variables.
+  // Reference: TCG PC Client Spec - Section 2.3.5
+  UEFI_APPLICATIONS = 7;
+  BOOT_MANAGER = 10;
+
+  // PCR 5: UEFI Boot Manager Configuration and Data.
+  // Reference: TCG PC Client Spec - Section 2.3.6
+  PLATFORM_CONFIGURATIONS = 6;
+  UEFI_APPLICATION_CONFIGURATION = 8;
+  PARTITION_TABLE = 9;
+
+  // PCR 7: Secure Boot Policy.
+  // Reference: TCG PC Client Spec - Section 2.3.8
+  BOOT_CONFIGURATION = 11;
+
+  // PCR 8-15: Operating System Defined.
+  // Reference: TCG PC Client Spec - Section 2.3.9
+  BOOT_LOADER = 12;
+  KERNEL_CONFIGURATION = 13;
+  KERNEL_COMMAND_LINE = 14;
+  KERNEL = 15;
+  OS_CONFIGURATION = 16;
+  ROOT_FILESYSTEM = 17;
+  OS_EXTENSION = 18;
+  
+  // Application/Orchestration Layer.
+  // Measurements for containerized environments or runtime integrity.
+  CONTAINER_IMAGES = 19;
+  
+  // Catch-all for proprietary or vendor-specific measurements.
+  OTHER = 20;
 }
+
 message PcrValues { 
    // Refers to the PCR index value
    int32 pcr_index = 1; 
@@ -74,7 +111,9 @@ message PcrValues {
 }
 
 message MeasurementIdentifier {
-    // Refers to the the version of the software/firmware
+    // Note - The canonical version string (e.g., "7.5.1"). 
+    // MUST match the version in the associated vendor's provided SBOM's and be 
+    // extractable from the binary's internal signed metadata.
     string image_version = 1; 
 
     // Refers to aboot version or bootloader versions for vendors
@@ -111,7 +150,9 @@ message FetchHardwareModelsRequest {}
 
 // Response containing a list of known hardware model strings.
 message FetchHardwareModelsResponse {
-    // List of valid hardware model strings (e.g., "A9K-400-LC", "Nokia-7750")
+    // List of valid hardware model strings.
+    // Values MUST be prefixed with the manufacturer name to ensure uniqueness.
+    // format: "[manufacturer]:[model]"
     repeated string hardware_models = 1;
 }
 
@@ -119,6 +160,10 @@ message FetchHardwareModelsResponse {
 message FetchBootLoaderVersionsRequest {
     // The hardware model to fetch bootloader versions
     string hardware_model = 1; 
+    // Note - The canonical version string (e.g., "7.5.1"). 
+    // MUST match the version in the associated vendor's provided SBOM's and be 
+    // extractable from the binary's internal signed metadata.
+    string image_version = 2;
 }
 
 // Response containing a list of known bootloader version strings.
@@ -129,16 +174,33 @@ message FetchBootLoaderVersionsResponse {
 
 // Request for fetching all known software versions for a specific hardware model.
 message FetchSoftwareVersionsRequest {
-    // The hardware model to fetch software versions
+    // The hardware model to fetch software versions.
+    // Format: "[manufacturer]:[model]"
     string hardware_model = 1; 
+
+    // Optional: Only return software versions released after this timestamp.
+    // Useful for fetching 'new' or 'relevant' images for a fleet.
+    google.protobuf.Timestamp released_since = 2;
+
+    // Optional: A regex pattern to filter versions (e.g., "^7.5.*").
+    string version_filter_regex = 3;
+}
+// Metadata of the fetch software version response
+message SoftwareVersionMetadata {
+    // The canonical version string (e.g., "7.5.1")
+    string version = 1;
+
+    // The date the software image was officially released/built.
+    google.protobuf.Timestamp release_date = 2;
+    
+    // Optional: Indicates if the version is the current recommended/stable release.
+    bool is_recommended = 3;
 }
 
-// Response containing a list of known software version strings.
+// Response for fetching all known software versions for a specific hardware model.
 message FetchSoftwareVersionsResponse {
-
-    // List of valid software version strings 
-    // (e.g., "7.5.1", "XR-7.1.2") for the specified hardware model
-    repeated string software_versions = 1; 
+    // List of software versions and their associated metadata.
+    repeated SoftwareVersionMetadata software_versions = 1; 
 }
 
 
